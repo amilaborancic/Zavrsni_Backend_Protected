@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const multer = require("multer");
 var async = require("async");
 const fs = require("fs");
+var bcrypt = require("bcrypt");
 
 app.use(bodyParser.urlencoded({
     extended: true
@@ -18,7 +19,10 @@ app.use(function (req, res, next) {
 });
 
 //DODATNO
-app.get("/", function (req, res) {
+app.get("/", (req, res) => {
+    res.send("Zavrsni rad 2019. Backend sa zastitom od SQLi.");
+})
+app.get("/users", function (req, res) {
 
     con.query("SELECT * FROM customers", function (err, result) {
         if (err) console.log(err);
@@ -28,16 +32,16 @@ app.get("/", function (req, res) {
     })
 })
 //info oko tabela
-app.get("/tabele",(req,res)=>{
-    con.query("SELECT TABLE_NAME, TABLE_SCHEMA FROM information_schema.tables",(err,result)=>{
-        if(err){
+app.get("/tabele", (req, res) => {
+    con.query("SELECT TABLE_NAME, TABLE_SCHEMA FROM information_schema.tables", (err, result) => {
+        if (err) {
             res.send({
                 success: false,
                 msg: err,
                 data: null
             })
         }
-        else{
+        else {
             res.send({
                 success: true,
                 msg: err,
@@ -56,22 +60,33 @@ app.get("/items", (req, res) => {
             })
         }
         else {
-            const blob = result[0].image;
-            var url = "";
+            if (result.length == 0) {
+                res.send({
+                    success: true,
+                    msg: "",
+                    data: []
 
-            if (blob != null) {
-                var buffer = Buffer.from(blob);
-                url = "data:image/png;base64," + buffer;
+                })
             }
-            res.send({
-                success: true,
-                msg: "",
-                data: {
-                    imgUrl: url,
-                    result: result
-                }
+            else {
+                const blob = result[0].image;
+                var url = "";
 
-            })
+                if (blob != null) {
+                    var buffer = Buffer.from(blob);
+                    url = "data:image/png;base64," + buffer;
+                }
+                res.send({
+                    success: true,
+                    msg: "",
+                    data: {
+                        imgUrl: url,
+                        result: result
+                    }
+
+                })
+            }
+
         }
     })
 })
@@ -180,9 +195,9 @@ app.post("/login", function (req, res) {
         email: req.body.email,
         password: req.body.password
     }
-    //much sqli here
-    con.query("SELECT * FROM customers WHERE email = '" + user.email + "' AND sifra = '" + user.password + "'", function (err, result) {
+    //hash sifre
 
+    con.query("SELECT * FROM customers WHERE email = ?", [user.email], (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -191,11 +206,39 @@ app.post("/login", function (req, res) {
             })
         }
         else if (result.length != 0) {
-            res.send({
-                success: true,
-                msg: "User successfully found.",
-                data: result
-            })
+            try {
+                if (bcrypt.compareSync(user.password, result[0].sifra)) {
+                    if (err) {
+                        res.send({
+                            success: false,
+                            msg: "Greska! ",
+                            data: null
+                        })
+                    }
+                    else {
+                        res.send({
+                            success: true,
+                            msg: "User successfully found.",
+                            data: result
+                        })
+                    }
+                }
+                else {
+                    res.send({
+                        success: false,
+                        msg: "Bad password!",
+                        data: null
+                    })
+                }
+            }
+            catch (error) {
+                res.send({
+                    success: false,
+                    msg: error,
+                    data: null
+                })
+            }
+
         }
         else {
             res.send({
@@ -217,9 +260,11 @@ app.post("/register", function (req, res) {
         address: req.body.address,
         pass: req.body.password
     }
-    con.query("INSERT INTO customers (name, last_name, email, credit_card, phone, address, sifra) VALUES ('" + noviUser.name +
-        "','" + noviUser.lastName + "','" + noviUser.email + "','" + noviUser.creditCard + "','" + noviUser.phone + "','" + noviUser.address +
-        "','" + noviUser.pass + "')", function (err, result) {
+    //hash sifre prije inserta
+    var hashedPass = bcrypt.hashSync(noviUser.pass, 16);
+    con.query("INSERT INTO customers (name, last_name, email, credit_card, phone, address, sifra) VALUES (?, ?, ?, ?, ?, ?, ?) ", [noviUser.name, noviUser.lastName, noviUser.email, noviUser.creditCard, noviUser.phone, noviUser.address, hashedPass]
+        , function (err, result) {
+            console.log(result);
             if (err) {
                 res.send({
                     success: false,
@@ -291,7 +336,7 @@ app.get("/customer/info/:idCustomer", (req, res) => {
 app.get("/search/:keyword", (req, res) => {
 
     let word = req.params.keyword;
-    con.query("SELECT * FROM items WHERE name LIKE '%" + word + "%';", (err, result) => {
+    con.query("SELECT * FROM items WHERE name LIKE ?;", ['%' + word + '%'], (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -300,7 +345,6 @@ app.get("/search/:keyword", (req, res) => {
             })
         }
         else {
-            //slike
             if (result.length == 0) {
                 res.send({
                     success: true,
@@ -341,30 +385,43 @@ app.get("/search/:keyword", (req, res) => {
 app.post("/cart/add", (req, res) => {
     var item = req.body.itemId;
     var cart = req.body.cartId;
-    con.query("INSERT INTO cart_items (cart_id_fk, item_id_fk) VALUES ( " + cart + " , " + item + ")", (err, result) => {
-        if (err) {
-            res.send({
-                success: false,
-                msg: err,
-                data: null
-            })
-        }
-        else {
-            //vratimo rez
-            res.send({
-                success: true,
-                msg: "Successfully added to cart!",
-                data: result
-            })
-        }
-    })
+    if (item == "" || cart == "") {
+        res.send({
+            success: false,
+            msg: "Cannot insert empty id",
+            data: null
+        })
+    }
+    else {
+        con.query("INSERT INTO cart_items ? ", values = {
+            cart_id_fk: cart,
+            item_id_fk: item
+        }, (err, result) => {
+            if (err) {
+                res.send({
+                    success: false,
+                    msg: err,
+                    data: null
+                })
+            }
+            else {
+                //vratimo rez
+                res.send({
+                    success: true,
+                    msg: "Successfully added to cart!",
+                    data: result
+                })
+            }
+        })
+    }
+
 
 })
 //REMOVE FROM CART - delete
 app.delete("/cart/delete", (req, res) => {
     let cart_item = req.body.cartItemId;
 
-    con.query("DELETE FROM cart_items WHERE cart_item_id = " + cart_item, (err, result) => {
+    con.query("DELETE FROM cart_items WHERE cart_item_id = ?", [cart_item], (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -497,4 +554,4 @@ app.get("/items/:itemId", (req, res) => {
         }
     })
 })
-app.listen(8080);
+app.listen(process.env.PORT || 8080);
