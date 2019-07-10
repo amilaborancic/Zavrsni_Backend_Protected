@@ -195,8 +195,6 @@ app.post("/login", function (req, res) {
         email: req.body.email,
         password: req.body.password
     }
-    //hash sifre
-
     con.query("SELECT * FROM customers WHERE email = ?", [user.email], (err, result) => {
         if (err) {
             res.send({
@@ -207,6 +205,7 @@ app.post("/login", function (req, res) {
         }
         else if (result.length != 0) {
             try {
+                //provjera na hash sifre
                 if (bcrypt.compareSync(user.password, result[0].sifra)) {
                     if (err) {
                         res.send({
@@ -260,61 +259,87 @@ app.post("/register", function (req, res) {
         address: req.body.address,
         pass: req.body.password
     }
-    //hash sifre prije inserta
-    var hashedPass = bcrypt.hashSync(noviUser.pass, 16);
-    con.query("INSERT INTO customers (name, last_name, email, credit_card, phone, address, sifra) VALUES (?, ?, ?, ?, ?, ?, ?) ", [noviUser.name, noviUser.lastName, noviUser.email, noviUser.creditCard, noviUser.phone, noviUser.address, hashedPass]
-        , function (err, result) {
-            console.log(result);
-            if (err) {
-                res.send({
-                    success: false,
-                    msg: "An error has occurred! " + err,
-                    data: null
-                })
-            }
-            else {
-                //odmah pravimo cart
-                con.query("INSERT INTO carts (shipping_addr, user_id_fk) VALUES ('" + noviUser.address + "', " + result.insertId + ")", (err, novi) => {
-                    if (err) {
-                        res.send({
-                            success: false,
-                            msg: err,
-                            data: null
-                        })
-                    }
-                    else {
-                        //dohvatimo info o customeru i cartu
-                        con.query("SELECT * FROM customers WHERE user_id = " + result.insertId, (err, help) => {
-                            if (err) {
-                                res.send({
-                                    success: false,
-                                    msg: err,
-                                    data: null
-                                })
-                            }
-                            else {
-                                res.send({
-                                    success: true,
-                                    msg: "You have been successfully registered!",
-                                    data: {
-                                        customer: help,
-                                        cart: novi.insertId
-                                    }
-                                })
-                            }
-                        })
-
-                    }
-                })
-
-            }
+    //sifra duza od 8 karaktera i bar jedan broj
+    if (noviUser.pass.length < 8 || !(/\d/.test(noviUser.pass))) {
+        res.send({
+            success: false,
+            msg: "Ne valja sifra",
+            data: null
         })
+    }
+    else if (isNaN(noviUser.phone)) {
+        //ne valja telefon
+        console.log(parseInt(noviUser.phone));
+        res.send({
+            success: false,
+            msg: "Phone can only contain numbers.",
+            data: null
+        })
+    }
+    else if (isNaN(noviUser.creditCard)) {
+        res.send({
+            success: false,
+            msg: "Ne valja credit card",
+            data: null
+        })
+    }
+    else {
+        //hash sifre prije inserta
+        var hashedPass = bcrypt.hashSync(noviUser.pass, 16);
+        con.query("INSERT INTO customers (name, last_name, email, credit_card, phone, address, sifra) VALUES (?, ?, ?, ?, ?, ?, ?) ", [noviUser.name, noviUser.lastName, noviUser.email, noviUser.creditCard, noviUser.phone, noviUser.address, hashedPass]
+            , function (err, result) {
+                if (err) {
+                    res.send({
+                        success: false,
+                        msg: "An error has occurred! " + err,
+                        data: null
+                    })
+                }
+                else {
+                    //odmah pravimo cart
+                    con.query("INSERT INTO carts (shipping_addr, user_id_fk) VALUES (?,?)", [noviUser.address, result.insertId], (err, novi) => {
+                        if (err) {
+                            res.send({
+                                success: false,
+                                msg: err,
+                                data: null
+                            })
+                        }
+                        else {
+                            //dohvatimo info o customeru i cartu
+                            con.query("SELECT * FROM customers WHERE user_id = ?", result.insertId, (err, help) => {
+                                if (err) {
+                                    res.send({
+                                        success: false,
+                                        msg: err,
+                                        data: null
+                                    })
+                                }
+                                else {
+                                    res.send({
+                                        success: true,
+                                        msg: "You have been successfully registered!",
+                                        data: {
+                                            customer: help,
+                                            cart: novi.insertId
+                                        }
+                                    })
+                                }
+                            })
+
+                        }
+                    })
+
+                }
+            })
+    }
+
 })
 
 //get - info
 app.get("/customer/info/:idCustomer", (req, res) => {
     let userId = req.params.idCustomer;
-    con.query("SELECT * FROM customers WHERE user_id = " + userId, (err, result) => {
+    con.query("SELECT * FROM customers WHERE user_id = ?", userId, (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -443,7 +468,7 @@ app.delete("/cart/delete", (req, res) => {
 //CART nekog usera
 app.get("/cart/:userId", (req, res) => {
     let user = req.params.userId;
-    con.query("SELECT * FROM carts WHERE user_id_fk = " + user, (err, result) => {
+    con.query("SELECT * FROM carts WHERE user_id_fk = ? ", [user], (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -464,7 +489,7 @@ app.get("/cart/:userId", (req, res) => {
 //items in cart za nekog usera
 app.get("/cart/items/:cartId", (req, res) => {
     let cart = req.params.cartId;
-    con.query("SELECT * FROM cart_items WHERE cart_id_fk = " + cart, (err, result) => {
+    con.query("SELECT * FROM cart_items WHERE cart_id_fk = ? " , [cart], (err, result) => {
         if (err) {
             res.send({
                 success: false,
@@ -479,7 +504,7 @@ app.get("/cart/items/:cartId", (req, res) => {
                 cartItem: x.cart_item_id
             }));
             async.eachSeries(itemIds, function (item, outCb) {
-                con.query("SELECT * FROM items WHERE item_id = " + item.item, (err, rez) => {
+                con.query("SELECT * FROM items WHERE item_id = ? ", [item.item], (err, rez) => {
                     if (err) {
                         outCb(err, null);
                     }
@@ -522,7 +547,7 @@ app.get("/cart/items/:cartId", (req, res) => {
 //pronadji item na osnovu id
 app.get("/items/:itemId", (req, res) => {
     let item = req.params.itemId;
-    con.query("SELECT * FROM items WHERE item_id = " + item, (err, result) => {
+    con.query("SELECT * FROM items WHERE item_id = ? ", [item], (err, result) => {
         if (err) {
             res.send({
                 success: false,
