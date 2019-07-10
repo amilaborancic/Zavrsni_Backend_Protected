@@ -269,7 +269,6 @@ app.post("/register", function (req, res) {
     }
     else if (isNaN(noviUser.phone)) {
         //ne valja telefon
-        console.log(parseInt(noviUser.phone));
         res.send({
             success: false,
             msg: "Phone can only contain numbers.",
@@ -418,10 +417,8 @@ app.post("/cart/add", (req, res) => {
         })
     }
     else {
-        con.query("INSERT INTO cart_items ? ", values = {
-            cart_id_fk: cart,
-            item_id_fk: item
-        }, (err, result) => {
+        con.query("INSERT INTO cart_items (cart_id_fk, item_id_fk) VALUES (?,?) ", [cart,item], (err, result) => {
+            
             if (err) {
                 res.send({
                     success: false,
@@ -504,7 +501,7 @@ app.get("/cart/items/:cartId", (req, res) => {
                 cartItem: x.cart_item_id
             }));
             async.eachSeries(itemIds, function (item, outCb) {
-                con.query("SELECT * FROM items WHERE item_id = ? ", [item.item], (err, rez) => {
+                con.query("SELECT * FROM items WHERE item_id =  " + item.item, (err, rez) => {
                     if (err) {
                         outCb(err, null);
                     }
