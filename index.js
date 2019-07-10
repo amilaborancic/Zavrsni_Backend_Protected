@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const multer = require("multer");
 var async = require("async");
 const fs = require("fs");
-var bcrypt = require("bcrypt");
+var bcrypt = require("bcryptjs");
 
 app.use(bodyParser.urlencoded({
     extended: true
