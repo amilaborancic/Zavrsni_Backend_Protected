@@ -168,23 +168,37 @@ app.get("/carts", (req, res) => {
 
 //brisanje svih podataka osim itema
 app.delete("/", (req, res) => {
-    con.query("DELETE from customers", (err, result) => {
-        if (err) console.log(err);
+    con.query("SET FOREIGN_KEY_CHECKS = 0;", (err, odg) => {
+        if (err) {
+            console.log(err);
+        }
         else {
-            con.query("DELETE from cart_items", (err, l) => {
+            con.query("DELETE from customers", (err, a) => {
                 if (err) console.log(err);
                 else {
-                    con.query("DELETE from carts", (err, data) => {
+                    con.query("DELETE from cart_items", (err, l) => {
                         if (err) console.log(err);
                         else {
-                            res.send("Uspjesno obrisano sve");
+                            con.query("DELETE from carts", (err, d) => {
+                                if (err) console.log(err);
+                                else {
+                                    con.query("SET FOREIGN_KEY_CHECKS = 1;", (err, result) => {
+                                        if (err) console.log(err);
+                                        else {
+                                            res.send("Uspjesno obrisano sve");
+                                        }
+                                    })
+
+                                }
+                            })
                         }
                     })
+
                 }
             })
-
         }
     })
+
 })
 //
 //RUTE
